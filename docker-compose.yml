@@ -1,0 +1,90 @@
+version: '3.5'
+services:
+  consul:
+    image: consul:1.15.4
+    container_name: consul
+    ports:
+      - "8500:8500"
+      - "8600:8600"
+      - "8600:8600/udp"
+    command: "agent -dev -client 0.0.0.0 -ui"
+    environment:
+      CONSUL_BIND_INTERFACE: eth0
+    networks:
+      - booking
+    restart: always
+
+  booking-gateway-service:
+    container_name: booking-gateway-service-container
+    image: ghcr.io/ttodoshi/booking-gateway-service:latest
+    ports:
+      - "8443:8443"
+    depends_on:
+      - consul
+    environment:
+      SPRING_CLOUD_CONSUL_HOST: consul
+      SPRING_CLOUD_CONSUL_PORT: 8500
+    networks:
+      - booking
+
+  mongo:
+    image: mongo
+    container_name: mongo-container
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=admin
+      - MONGO_INITDB_ROOT_PASSWORD=pass
+    volumes:
+      - ./init-mongo.js:/docker-entrypoint-initdb.d/init-mongo.js
+      - mongo:/data/db
+    ports:
+      - "27017:27017"
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
+      interval: 10s
+      retries: 3
+      start_period: 5s
+    networks:
+      booking:
+    restart: unless-stopped
+
+  booking-auth-service:
+    container_name: booking-auth-service-container
+    image: ghcr.io/ttodoshi/booking-auth-service:latest
+    ports:
+      - "8090:8090"
+    depends_on:
+      mongo:
+        condition: service_healthy
+    environment:
+      ACCESS_TOKEN_EXP: 300
+      REFRESH_TOKEN_EXP: 1209600
+      COOKIE_HOST: "localhost"
+      SECRET_KEY: "secretsecretsecretsecretsecretsecretsecretsecretsecretsecretsecretsecret"
+      PORT: 8090
+      PROFILE: "dev"# dev, prod
+      LOG_LEVEL: "debug"#trace, debug, info, warn, error
+      DB_URL: "mongodb://admin:pass@mongo:27017"
+      CONSUL_HOST: "consul:8500"
+      CONSUL_SERVICE_NAME: "auth-service"
+      CONSUL_SERVICE_ADDRESS: "booking-auth-service"
+    networks:
+      - booking
+
+  booking-reservation-service:
+    container_name: booking-reservation-service-container
+    image: ghcr.io/ttodoshi/booking-reservation-service:latest
+    ports:
+      - "8070:8070"
+    environment:
+      SPRING_CLOUD_CONSUL_HOST: consul
+      SPRING_CLOUD_CONSUL_PORT: 8500
+      SPRING_DATA_MONGODB_URI: mongodb://admin:pass@mongo:27017
+    networks:
+      - booking
+
+networks:
+  booking:
+    driver: bridge
+
+volumes:
+  mongo:
