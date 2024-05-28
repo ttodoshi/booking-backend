@@ -7,7 +7,6 @@ db.periods.insert([
     {"value": "10-11"},
     {"value": "11-12"},
     {"value": "12-13"},
-    {"value": "13-14"},
     {"value": "14-15"},
     {"value": "15-16"},
     {"value": "16-17"},
